@@ -1,0 +1,22 @@
+{
+  "name": "create-wallets",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "tsc"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "commander": "^13.0.0",
+    "dayjs": "^1.11.13",
+    "ethers": "^6.13.5",
+    "inquirer": "^12.3.0",
+    "lodash": "^4.17.21",
+    "viem": "^2.22.6",
+    "common": "workspace:*"
+  }
+}

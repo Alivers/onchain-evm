@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+yarn.lock
+package-lock.json
+
+# Build outputs
+dist/
+build/
+artifacts/
+cache/
+typechain/
+typechain-types/
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Testing
+coverage/
+coverage.json
+
+# Hardhat files
+hardhat.config.ts
+hardhat.config.js
+
+# Logs
+logs/
+*.log
+
+# Misc
+.DS_Store
+*.pem
+.tmp/
+
+# Debug
+debug/
+.debug/
