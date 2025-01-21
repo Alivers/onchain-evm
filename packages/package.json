@@ -1,5 +1,5 @@
 {
-  "name": "disperse-fund",
+  "name": "packages",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
@@ -11,10 +11,6 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "commander": "^13.0.0",
-    "dayjs": "^1.11.13",
-    "inquirer": "^12.3.0",
-    "lodash": "^4.17.21",
     "viem": "^2.22.6",
     "common": "workspace:*"
   }
