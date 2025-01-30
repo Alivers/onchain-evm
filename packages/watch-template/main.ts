@@ -5,6 +5,7 @@ import {
   formatUnits,
   getContract,
   http,
+  webSocket,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { mainnet } from "viem/chains";
@@ -19,20 +20,24 @@ const config = {
   network: mainnet,
   contractAddressToWatch: "0x" as const,
   abiOfEventToWatch: erc721Abi[2],
+  socketURL: "",
   rpcURL: "",
   contractAddressToCall: "0x" as const,
   abiOfContractToCall: erc721Abi,
 };
 
 async function watch() {
-  const httpTransport = http(config.rpcURL);
+  const transport = config.socketURL
+    ? webSocket(config.socketURL)
+    : http(config.rpcURL);
+
   const client = createPublicClient({
     chain: config.network,
-    transport: httpTransport,
+    transport: transport,
   });
   const me = createWalletClient({
     chain: config.network,
-    transport: httpTransport,
+    transport: transport,
     account: privateKeyToAccount(config.pk),
   });
 
