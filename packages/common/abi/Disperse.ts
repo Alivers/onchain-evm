@@ -1,3 +1,5 @@
+export const DisperseAddress = "0xD152f549545093347A162Dce210e7293f1452150";
+
 export const DisperseAbi = [
   {
     constant: false,
@@ -38,5 +40,3 @@ export const DisperseAbi = [
     type: "function",
   },
 ] as const;
-
-export const DisperseAddress = "0xD152f549545093347A162Dce210e7293f1452150";
