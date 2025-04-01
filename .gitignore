@@ -42,3 +42,6 @@ logs/
 # Debug
 debug/
 .debug/
+
+# Sensitive files
+wallets-mnemonic*
