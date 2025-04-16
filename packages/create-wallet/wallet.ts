@@ -40,18 +40,17 @@ export function createWalletsFromMnemonic(
         derivationPath: wallet.path ?? undefined,
       });
     }
-  }
-  for (let i = 0; i < amount; ++i) {
-    // IndexedAccountPath
-    // ref: https://docs.ethers.org/v6/api/wallet/#getIndexedAccountPath
-    const path = `m/44'/60'/0'/0/${i}`;
-    const wallet = ethers.HDNodeWallet.fromMnemonic(mnemonicObj, path);
-    wallets.push({
-      address: wallet.address,
-      privateKey: wallet.privateKey,
-      mnemonic: mnemonic,
-      derivationPath: wallet.path ?? undefined,
-    });
+  } else {
+    for (let i = 0; i < amount; ++i) {
+      const indexedPath = ethers.getIndexedAccountPath(i);
+      const wallet = ethers.HDNodeWallet.fromMnemonic(mnemonicObj, indexedPath);
+      wallets.push({
+        address: wallet.address,
+        privateKey: wallet.privateKey,
+        mnemonic: mnemonic,
+        derivationPath: wallet.path ?? undefined,
+      });
+    }
   }
   saveWallets(wallets, `mnemonic-${useLedgerPath ? "ledger" : "mm"}`);
 }
@@ -72,13 +71,4 @@ function saveWallets(wallets: Wallet[], method: string) {
 
   console.log(`Generated ${wallets.length} wallet(s)`);
   console.log(`Saved to: ${fileName}`);
-
-  //   wallets.forEach((wallet, index) => {
-  //     console.log(`\nWallet ${index + 1}:`);
-  //     console.log(`Address: ${wallet.address}`);
-  //     console.log(`Private Key: ${wallet.privateKey}`);
-  //     if (wallet.mnemonic) {
-  //       console.log(`Mnemonic: ${wallet.mnemonic}`);
-  //     }
-  //   });
 }
