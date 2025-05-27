@@ -4,6 +4,7 @@ import {
   encodeFunctionData,
   http,
   parseGwei,
+  createPublicClient,
 } from "viem";
 import { bsc } from "viem/chains";
 import { privateKeyToAccount } from "viem/accounts";
@@ -13,6 +14,8 @@ import { PancakeSmartRouterV3Abi } from "abi/PancakeSmartRouterV3";
 import Big from "big.js";
 import { ERC20Abi } from "abi/ERC20";
 
+import { PancakeMath } from "./pancake-math";
+
 const Metamask7702Delegator: `0x${string}` =
   "0x63c0c19a282a1B52b07dD5a65b58948A07DAE32B";
 const PancakeV3Manager: `0x${string}` =
@@ -21,40 +24,42 @@ const PancakeSmartRouterV3: `0x${string}` =
   "0x13f4ea83d0bd40e75c8222255bc855a974568dd4";
 
 const WBNB: `0x${string}` = "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c";
-const TestToken: `0x${string}` = "0x";
+const TestToken: `0x${string}` = "0x0000000000000000000000000000000000000000";
+const FeeRate = 2500;
 
-// Price constants
-const BNB_PRICE_USD = new Big(680);
-const INITIAL_PRICE_USD = new Big(0.1);
-const TARGET_PRICE_USD = new Big(2);
+const PancakeMathFor = new PancakeMath(WBNB, TestToken, FeeRate);
 
-// Constants for calculations
-const Q96 = new Big(2).pow(96);
-const BNB_AMOUNT = new Big(0.1);
-const TICK_RANGE = new Big(100);
+const BnbPriceUSD = new Big(680);
+const TokenPriceUSD = {
+  Initial: new Big(0.1),
+  Min: new Big(0.05),
+  Max: new Big(100),
+  Target: new Big(1),
+}
 
 const DECIMAL_SCALE = new Big(10).pow(18);
+const BNB_AMOUNT = new Big(0.1).mul(DECIMAL_SCALE);
 
-// Calculate ticks
-const getTickFromPrice = (price: Big) => {
-  // tick = log(price/BNB_PRICE_USD) / log(1.0001)
-  const relativePrice = price.div(BNB_PRICE_USD).toNumber();
-  return Math.floor(Math.log(relativePrice) / Math.log(1.0001));
-};
+const tickInitial = PancakeMathFor.getTickFromPrice(BnbPriceUSD, TokenPriceUSD.Initial);
+const tickLower = PancakeMathFor.getTickFromPrice(BnbPriceUSD, TokenPriceUSD.Min);
+const tickUpper = PancakeMathFor.getTickFromPrice(BnbPriceUSD, TokenPriceUSD.Max);
+const tickTarget = PancakeMathFor.getTickFromPrice(BnbPriceUSD, TokenPriceUSD.Target);
 
-const initialTick = getTickFromPrice(INITIAL_PRICE_USD);
-const targetTick = getTickFromPrice(TARGET_PRICE_USD);
+const { amountBDesired: liquidityRequiredTokenAmount, L: liquidityRequired } = PancakeMathFor.calculateLiquidityRequiredByA(
+  BNB_AMOUNT,
+  BnbPriceUSD.mul(PancakeMathFor.getPriceFromTick(tickLower)),
+  BnbPriceUSD.mul(PancakeMathFor.getPriceFromTick(tickUpper)),
+  BnbPriceUSD.mul(PancakeMathFor.getPriceFromTick(tickInitial)),
+  BnbPriceUSD,
+);
 
-// Calculate sqrtPriceX96
-const getSqrtPriceX96 = (price: Big) => {
-  // sqrtPriceX96 = sqrt(price/BNB_PRICE_USD) * 2^96
-  return price.div(BNB_PRICE_USD).sqrt().mul(Q96).round(0, Big.roundDown);
-};
-
-// Calculate token amount for liquidity
-const getTokenAmount = (bnbAmount: Big, price: Big) => {
-  return bnbAmount.mul(BNB_PRICE_USD).div(price).round(0, Big.roundDown);
-};
+const swapRequiredBnbAmount = PancakeMathFor.calculateNeeded(
+  BnbPriceUSD.mul(PancakeMathFor.getPriceFromTick(tickTarget)),
+  BnbPriceUSD.mul(PancakeMathFor.getPriceFromTick(tickInitial)),
+  BnbPriceUSD.mul(PancakeMathFor.getPriceFromTick(tickUpper)),
+  BnbPriceUSD,
+  liquidityRequired,
+);
 
 async function signAuth(config: Config) {
   const wallet = createWalletClient({
@@ -93,11 +98,10 @@ async function createPool(config: Config) {
           abi: PancakeV3ManagerAbi,
           functionName: "createAndInitializePoolIfNecessary",
           args: [
-            WBNB,
             TestToken,
-            10000, // fee tier: 1%
-            // Initial price: INITIAL_PRICE_USD USD per BNB
-            BigInt(getSqrtPriceX96(INITIAL_PRICE_USD).toFixed(0)),
+            WBNB,
+            FeeRate,
+            BigInt(PancakeMathFor.getSqrtPriceFromTick(tickInitial).toFixed(0)),
           ],
         }),
         encodeFunctionData({
@@ -105,24 +109,19 @@ async function createPool(config: Config) {
           functionName: "mint",
           args: [
             {
-              token0: WBNB,
-              token1: TestToken,
-              fee: 10000,
-              // Set tick range around initial price
-              tickLower: initialTick - TICK_RANGE.toNumber(),
-              tickUpper: initialTick + TICK_RANGE.toNumber(),
+              token0: TestToken,
+              token1: WBNB,
+              fee: FeeRate,
+              tickLower: tickLower,
+              tickUpper: tickUpper,
+              amount0Desired: BigInt(liquidityRequiredTokenAmount.toFixed(0)),
               // Add 0.1 BNB liquidity
-              amount0Desired: BigInt(BNB_AMOUNT.mul(DECIMAL_SCALE).toFixed(0)),
-              // At initial price, calculate corresponding token amount
-              amount1Desired: BigInt(
-                getTokenAmount(BNB_AMOUNT, INITIAL_PRICE_USD)
-                  .mul(DECIMAL_SCALE)
-                  .toFixed(0)
-              ),
-              amount0Min: 0n,
-              amount1Min: 0n,
+              amount1Desired: BigInt(BNB_AMOUNT.toFixed(0)),
+              // Set minimum amounts to 5% slippage
+              amount0Min: BigInt(liquidityRequiredTokenAmount.mul(0.90).toFixed(0)),
+              amount1Min: BigInt(BNB_AMOUNT.mul(0.90).toFixed(0)),
               recipient: wallet.account.address,
-              deadline: 0n,
+              deadline: 1748496106n,
             },
           ],
         }),
@@ -137,13 +136,11 @@ async function createPool(config: Config) {
       {
         tokenIn: WBNB,
         tokenOut: TestToken,
-        fee: 10000,
+        fee: FeeRate,
         recipient: wallet.account.address,
-        // Use 0.1 BNB to swap
-        amountIn: BigInt(BNB_AMOUNT.mul(DECIMAL_SCALE).toFixed()),
+        amountIn: BigInt(swapRequiredBnbAmount.toFixed(0)),
         amountOutMinimum: 0n,
-        // Target price: TARGET_PRICE_USD USD per BNB
-        sqrtPriceLimitX96: BigInt(getSqrtPriceX96(TARGET_PRICE_USD).toFixed(0)),
+        sqrtPriceLimitX96: BigInt(PancakeMathFor.getSqrtPriceFromTick(tickTarget).toFixed(0)),
       },
     ],
   });
@@ -163,28 +160,41 @@ async function createPool(config: Config) {
     ],
     [
       [
-        // {
-        //   target: TestToken,
-        //   value: 0n,
-        //   callData: encodeFunctionData({
-        //     abi: ERC20Abi,
-        //     functionName: "approve",
-        //     args: [PancakeV3Manager, 2n ** 256n - 1n],
-        //   }),
-        // },
+        {
+          target: TestToken,
+          value: 0n,
+          callData: encodeFunctionData({
+            abi: ERC20Abi,
+            functionName: "approve",
+            args: [PancakeV3Manager, 2n ** 256n - 1n],
+          }),
+        },
         {
           target: PancakeV3Manager,
-          value: BigInt(BNB_AMOUNT.mul(DECIMAL_SCALE).toFixed(0)),
+          value: BigInt(BNB_AMOUNT.toFixed(0)),
           callData: createPoolAddLiquidityData,
         },
-        // {
-        //   target: PancakeSmartRouterV3,
-        //   value: BigInt(BNB_AMOUNT.mul(DECIMAL_SCALE).toFixed()),
-        //   callData: swapToData,
-        // },
+        {
+          target: PancakeSmartRouterV3,
+          value: BigInt(swapRequiredBnbAmount.toFixed(0)),
+          callData: swapToData,
+        },
       ],
     ]
   );
+
+  // const publicClient = createPublicClient({
+  //   chain: bsc,
+  //   transport: http(config.rpc),
+  // });
+  // const gas = await publicClient.estimateContractGas({
+  //   account: wallet.account,
+  //   address: wallet.account.address,
+  //   abi: Metamask7702DelegatorAbi,
+  //   functionName: "execute",
+  //   args: [callMode, execData],
+  // });
+  // console.log(gas);
 
   const bundleData = encodeFunctionData({
     abi: Metamask7702DelegatorAbi,
@@ -208,12 +218,17 @@ interface Config {
 
 async function main() {
   const config = {
-    privateKey: "0x" as `0x${string}`,
+    privateKey: "" as `0x${string}`,
     rpc: "",
   };
 
-  //   await signAuth(config);
+  // await signAuth(config);
   await createPool(config);
+  console.log(swapRequiredBnbAmount.div(DECIMAL_SCALE).toFixed());
+  // console.log(liquidityRequiredTokenAmount.div(DECIMAL_SCALE).toFixed(0));
+  // console.log(PancakeMathFor.getTickFromPrice(BnbPriceUSD, TokenPriceUSD.Min));
+  // console.log(PancakeMathFor.getTickFromPrice(BnbPriceUSD, TokenPriceUSD.Max));
+  // console.log(PancakeMathFor.getSqrtPriceX96(BnbPriceUSD, TokenPriceUSD.Initial).toFixed(0))
 }
 
 main()
